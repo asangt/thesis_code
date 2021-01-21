@@ -1,6 +1,6 @@
 import numpy as np
 
-def instantiate_network(buses, scenarios, lines, line_mileage_cost, ref_node,                        big_constant=None, susceptancy_scaling=1.0, scenario_weights=None):
+def instantiate_network(buses, scenarios, lines, line_mileage_cost, ref_node, big_constant=None, susceptancy_scaling=1.0, scenario_weights=None):
     """
         buses: {'bus'  : [has_generation, num_conv, num_ren, c_op, conv_cap, ren_cap, ren_type, ls_cost, load]}
         lines: {'line' : [length, x, capacity, is_built, count, is_candidate, corridor_capacity]}
@@ -48,6 +48,9 @@ def instantiate_network(buses, scenarios, lines, line_mileage_cost, ref_node,   
     ReferenceNode = ref_node
     
     ScenarioProbabilities = scenario_weights if scenario_weights is not None else [1.0] * ScenariosNum
+    if type(ScenarioProbabilities) == list:
+        ScenarioProbabilities = np.array(ScenarioProbabilities)
+    
     M = BusLoads.max() * 2 if big_constant is None else big_constant
     
     Network = {

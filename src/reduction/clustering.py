@@ -31,18 +31,19 @@ def optimize_with_clustering(
     supported_problems = ['TEP', 'Wind Investment']
     assert opt_problem in supported_problems, "Unsupported optimization problem"
 
+    n_generation_scenarios, n_load_scenarios = len(problem_parameters['RenewableProfiles']), len(problem_parameters['BusLoads'])
     scenario_clusters, rho, labels = cluster(
         scenarios, n_clusters, model, model_params, cluster_center, scale
     )
 
     if opt_problem == "TEP":
-        network = get_modified_network_tep(problem_parameters, scenarios, rho)
+        network = get_modified_network_tep(problem_parameters, scenario_clusters, n_generation_scenarios, n_load_scenarios, rho)
 
         model = tep.two_stage(**network)
         model, _ = tep.solve_model(model)
 
         x, f_max, cost = tep.get_from_model(model, len(network['Lines']), network['ExistingLinesNum'])
-        result = np.array(x + f_max + [cost])
+        result = np.concatenate((x, f_max, [cost]))
     elif opt_problem == "Wind Investment":
         model = wind_investment.two_stage(**problem_parameters, scenarios=scenario_clusters, scenario_w=rho)
         model = wind_investment.solve_model(model)

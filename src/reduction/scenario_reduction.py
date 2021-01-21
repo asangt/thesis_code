@@ -26,30 +26,31 @@ class ScenarioReduction:
             self.scaler = MaxAbsScaler()
 
         if self.opt_problem == "TEP":
-            self.n_generation_scenarios = len(network['RenewableProfiles'])
-            self.n_load_scenarios = len(network['BusLoads'])
+            self.n_generation_scenarios = len(problem_parameters['RenewableProfiles'])
+            self.n_load_scenarios = len(problem_parameters['BusLoads'])
 
     def solve_DP(self, X):
         EX = X.mean(axis=0)[None, :]
 
         if self.opt_problem == "TEP":
-            network = get_modified_network_tep(self.problem_parameters, EX, np.ones(1))
+            network = get_modified_network_tep(self.problem_parameters, EX, self.n_generation_scenarios, self.n_load_scenarios, np.ones(1))
 
             model = tep.two_stage(**network)
             model, _ = tep.solve_model(model)
             
-            x_dp, fmax_dp = tep.get_from_model(model)
+            x_dp, fmax_dp, cost = tep.get_from_model(model, len(network['Lines']), network['ExistingLinesNum'])
             return (x_dp, fmax_dp)
-        elif self.opt_problem == "Wind Investment":
+        
+        if self.opt_problem == "Wind Investment":
             model = wind_investment.two_stage(**self.problem_parameters, scenarios=EX, scenario_w=np.ones(1))
             model = wind_investment.solve_model(model)
 
             x_dp = model.x[0]
-            return (x_dp, )
+            return (x_dp,)
     
     def solve_SS(self, scenarios, scenario_w, var_dp):
         if self.opt_problem == "TEP":
-            network = get_modified_network_tep(self.problem_parameters, scenarios, scenario_w)
+            network = get_modified_network_tep(self.problem_parameters, scenarios, self.n_generation_scenarios, self.n_load_scenarios, scenario_w)
             
             x_dp, fmax_dp = var_dp[0], var_dp[1]
             model_ss = tep.second_stage(**network, x=x_dp, f_max=fmax_dp)
@@ -65,7 +66,7 @@ class ScenarioReduction:
     
     def solve_TS(self, scenarios, scenario_w):
         if self.opt_problem == "TEP":
-            network = get_modified_network_tep(self.problem_parameters, scenarios, scenario_w)
+            network = get_modified_network_tep(self.problem_parameters, scenarios, self.n_generation_scenarios, self.n_load_scenarios, scenario_w)
 
             model = tep.two_stage(**network)
             model, _ = tep.solve_model(model)
@@ -79,7 +80,6 @@ class ScenarioReduction:
     def morales_SR(self, X):
         # solve deterministic expected value problem
         var_dp = self.solve_DP(X)
-        
         # solve second stage with single scenarios
         Z = np.empty((len(X), 1), dtype=float)
         for i in range(len(Z)):
@@ -111,12 +111,13 @@ class ScenarioReduction:
         
         return q, labels
 
-    def forward_selection(self, X):
+    def forward_selection(self, X, p=None):
         w = X.copy()
         N, n_features = X.shape
         w_r = np.empty((self.n_scenarios, n_features), dtype=float)
         
-        p = np.ones(len(w)) / len(w)
+        if p is None:
+            p = np.ones(len(w)) / len(w)
         
         for j in range(self.n_scenarios):
             u_dist = np.empty(len(w), dtype=float)
@@ -138,16 +139,19 @@ class ScenarioReduction:
 
         return u, q, labels
 
-    def fit(self, X):
+    def fit(self, X, p=None, precomputed_w=None):
 
-        if self.method == 'Morales':
-            w = self.morales_SR(X)
-        elif self.method == 'Bruninx':
-            w = self.bruninx_SR(X)
+        if precomputed_w is not None:
+            w = precomputed_w
         else:
-            w = self.scaler.fit_transform(X) if self.scale else X
+            if self.method == 'Morales':
+                w = self.morales_SR(X)
+            elif self.method == 'Bruninx':
+                w = self.bruninx_SR(X)
+            else:
+                w = self.scaler.fit_transform(X) if self.scale else X 
 
-        u, q, labels = self.forward_selection(w)
+        u, q, labels = self.forward_selection(w, p)
         w_r = X[u]
 
         self.labels_ = labels
@@ -156,25 +160,28 @@ class ScenarioReduction:
 
         return self
 
-    def fit_return(self, X):
-        self.fit(X)
+    def fit_return(self, X, p=None, precomputed_w=None):
+        self.fit(X, p, precomputed_w)
 
         return self.reduced_set_, self.reduced_weights_, self.labels_
 
 def optimize_with_sr(
-    scenarios, opt_problem, problem_parameters, n_scenarios, method, scale=True
+    scenarios, opt_problem, problem_parameters, n_scenarios, method, scale=True, precomputed_w=None
 ):
     model_instance = ScenarioReduction(method, opt_problem, n_scenarios, problem_parameters, scale)
-    reduced_set, rho, labels = model_instance.fit_return(scenarios)
+    p = problem_parameters["ScenarioProbabilities"]
+    reduced_set, rho, labels = model_instance.fit_return(scenarios, p, precomputed_w)
+
+    n_generation_scenarios, n_load_scenarios = model_instance.n_generation_scenarios, model_instance.n_load_scenarios
 
     if opt_problem == "TEP":
-        network = get_modified_network_tep(problem_parameters, reduced_set, rho)
+        network = get_modified_network_tep(problem_parameters, reduced_set,  n_generation_scenarios, n_load_scenarios, rho)
 
         opt_model = tep.two_stage(**network)
-        opt_model, _ = solve_model(opt_model)
+        opt_model, _ = tep.solve_model(opt_model)
 
         x, f_max, cost = tep.get_from_model(opt_model, len(network['Lines']), network['ExistingLinesNum'])
-        result = np.array(x + f_max + [cost])
+        result = np.concatenate((x, f_max, [cost]))
     elif opt_problem == "Wind Investment":
         opt_model = wind_investment.two_stage(**problem_parameters, scenarios=reduced_set, scenario_w=rho)
         opt_model = wind_investment.solve_model(opt_model)

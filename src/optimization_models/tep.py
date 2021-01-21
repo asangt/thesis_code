@@ -116,7 +116,7 @@ def two_stage(BusesNum, ScenariosNum, Lines, ExistingLinesNum, ConventionalUnits
     )
     
     AnnualOperationalCosts = gp.quicksum( 
-        365 * ScenarioProbabilities[s] * gp.quicksum( gp.quicksum( OperationalCosts[g] * Pc[g, s, t] for g in CgIndices ) +\
+        ScenarioProbabilities[s] * gp.quicksum( gp.quicksum( OperationalCosts[g] * Pc[g, s, t] for g in CgIndices ) +\
                                                 gp.quicksum( LoadSheddingCosts[n-1] * Ls[n, s, t] for n in Buses )\
                                                 for t in TimeIndices )\
         for s in ScenarioIndices
@@ -212,7 +212,7 @@ def second_stage(x, f_max, BusesNum, ScenariosNum, Lines, ExistingLinesNum, Conv
     )
     
     AnnualOperationalCosts = gp.quicksum( 
-        365 * ScenarioProbabilities[s] * gp.quicksum( gp.quicksum( OperationalCosts[g] * Pc[g, s, t] for g in CgIndices ) +\
+        ScenarioProbabilities[s] * gp.quicksum( gp.quicksum( OperationalCosts[g] * Pc[g, s, t] for g in CgIndices ) +\
                                                 gp.quicksum( LoadSheddingCosts[n-1] * Ls[n, s, t] for n in Buses )\
                                                 for t in TimeIndices )\
         for s in ScenarioIndices
@@ -226,6 +226,12 @@ def second_stage(x, f_max, BusesNum, ScenariosNum, Lines, ExistingLinesNum, Conv
 
 def solve_model(model, solve_fixed=False, verbose=False):
     model.Params.OutputFlag = 1 if verbose else 0
+
+    model.Params.Method = 2
+    model.Params.NodeMethod = 2
+    model.Params.MIPGap = 0.1
+    model.Params.Presolve = 2
+    
     model.optimize()
     
     fixed_model = None

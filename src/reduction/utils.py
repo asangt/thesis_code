@@ -15,14 +15,18 @@ def kantorovich_distance(w_1, w_2, p):
 
     return d_k
 
-def get_modified_network_tep(initial_network, scenarios, scenario_w=None):
+def get_modified_network_tep(initial_network, scenarios, n_generation_scenarios, n_load_scenarios, scenario_w=None):
     network = initial_network.copy()
+    n_scenarios = len(scenarios)
 
-    network['ScenariosNum'] = len(scenarios)
-    network['BusLoads'] = scenarios[:, 24 * len(self.n_generation_scenarios):].reshape(self.n_scenarios, len(self.n_load_scenarios), 24).transpose((1, 0, 2))
-    network['RenewableProfiles'] = scenarios[:, :24 * len(self.n_generation_scenarios)].reshape(self.n_scenarios, len(self.n_generation_scenarios), 24).transpose((1, 0, 2))
+    network['ScenariosNum'] = n_scenarios
+    network['BusLoads'] = scenarios[:, 24 * n_generation_scenarios:].reshape(-1, n_load_scenarios, 24).transpose((1, 0, 2))
+    network['RenewableProfiles'] = scenarios[:, :24 * n_generation_scenarios].reshape(-1, n_generation_scenarios, 24).transpose((1, 0, 2))
     if scenario_w is not None:
-        network['ScenarioProbabilities'] = scenario_w.tolist()
+        if scenario_w.sum() < 1.1:
+            scenario_w *= 365
+        
+        network['ScenarioProbabilities'] = scenario_w
 
     return network
 
